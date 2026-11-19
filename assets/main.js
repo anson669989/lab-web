@@ -4,106 +4,180 @@
   const page = document.body.dataset.page;
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const set = (id, html) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  };
+
+  // ---------- 泡孔截面圖（首頁主視覺、頁首裝飾） ----------
+  // 用固定亂數種子做圓形堆積，模擬微孔泡材的 SEM 截面；每次載入長得一樣。
+  function foamSVG(w, h, count, seed, cls) {
+    let t = seed >>> 0;
+    const rnd = () => {
+      t = (t + 0x6d2b79f5) >>> 0;
+      let x = Math.imul(t ^ (t >>> 15), 1 | t);
+      x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+    const cells = [];
+    for (let i = 0; i < 6000 && cells.length < count; i++) {
+      const r = 5 + 42 * rnd() ** 2.2;
+      const x = rnd() * w, y = rnd() * h;
+      if (cells.every((c) => Math.hypot(c.x - x, c.y - y) > c.r + r + 2.5)) cells.push({ x, y, r });
+    }
+    const circles = cells
+      .map((c, i) => `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${c.r.toFixed(1)}"${i % 9 === 0 ? ' class="hot"' : ""}/>`)
+      .join("");
+    return `<svg class="${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">${circles}</svg>`;
+  }
 
   // ---------- Header / Footer ----------
   const nav = [
     ["index", "首頁", "index.html"],
-    ["research", "研究方向", "research.html"],
+    ["research", "研究", "research.html"],
     ["members", "成員", "members.html"],
-    ["publications", "論文發表", "publications.html"],
-    ["contact", "聯絡我們", "contact.html"],
+    ["publications", "成果", "publications.html"],
+    ["contact", "聯絡", "contact.html"],
   ];
-  document.getElementById("site-header").innerHTML = `
+  set("site-header", `
     <div class="container header-inner">
-      <a class="brand" href="index.html"><span class="brand-mark">${esc(L.short)}</span><span>${esc(L.name)}</span></a>
-      <button class="nav-toggle" aria-label="選單" aria-expanded="false">☰</button>
+      <a class="brand" href="index.html">
+        <span class="brand-mark">${esc(L.short)}</span>
+        <span class="brand-name">${esc(L.name)}</span>
+      </a>
+      <button class="nav-toggle" aria-label="選單" aria-expanded="false"><span></span><span></span></button>
       <nav class="nav">${nav
-        .map(([id, label, href]) => `<a href="${href}"${id === page ? ' class="active" aria-current="page"' : ""}>${label}</a>`)
+        .map(([id, label, href], i) =>
+          `<a href="${href}"${id === page ? ' class="active" aria-current="page"' : ""}><small>0${i}</small>${label}</a>`)
         .join("")}</nav>
-    </div>`;
+    </div>`);
   const toggle = document.querySelector(".nav-toggle");
   toggle.addEventListener("click", () => {
     const open = document.querySelector(".nav").classList.toggle("open");
     toggle.setAttribute("aria-expanded", open);
   });
 
-  document.getElementById("site-footer").innerHTML = `
+  set("site-footer", `
     <div class="container footer-inner">
-      <div><strong>${esc(L.name)}</strong><br>${esc(L.nameEn)} · ${esc(L.university)}</div>
-      <div>${esc(L.contact.address)}<br><a href="mailto:${esc(L.contact.email)}">${esc(L.contact.email)}</a></div>
-      <div class="muted">© ${new Date().getFullYear()} ${esc(L.nameEn)}</div>
-    </div>`;
+      <div><strong>${esc(L.name)}</strong><br><span class="mono">${esc(L.nameEn)}</span></div>
+      <div>${esc(L.university)}<br>${esc(L.contact.lab)} · <a href="mailto:${esc(L.contact.email)}">${esc(L.contact.email)}</a></div>
+      <div class="mono muted">© ${new Date().getFullYear()} ${esc(L.short)}</div>
+    </div>`);
 
   document.title = (document.title ? document.title + " | " : "") + L.name;
 
+  // 子頁頁首加上一條泡孔紋理
+  const head = document.querySelector(".page-head");
+  if (head) head.insertAdjacentHTML("afterbegin", foamSVG(1200, 220, 90, page.length * 97, "page-foam"));
+
   // ---------- Helpers ----------
-  const set = (id, html) => {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = html;
-  };
-  const researchCards = (items) =>
+  const researchRows = (items) =>
     items
-      .map((r) => `<article class="card"><div class="card-icon">${r.icon}</div><h3>${esc(r.title)}</h3><p>${esc(r.desc)}</p></article>`)
+      .map((r) => `
+        <article class="r-row">
+          <div class="r-code mono">${esc(r.code)}</div>
+          <div class="r-head"><h3>${esc(r.title)}</h3><p class="r-en mono">${esc(r.en)}</p></div>
+          <div class="r-body"><p>${esc(r.desc)}</p>
+            <ul class="tags">${(r.tags || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>
+        </article>`)
       .join("");
-  const newsList = (items) =>
-    `<ul class="news">${items.map((n) => `<li><time>${esc(n.date)}</time><span>${esc(n.text)}</span></li>`).join("")}</ul>`;
+  const pubItem = (p) =>
+    `<li><div class="pub-title">${p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>` : esc(p.title)}</div>
+      <div class="pub-meta">${esc(p.authors)} — <em>${esc(p.venue)}</em>, ${esc(p.year)}</div></li>`;
+  const timeline = (items) =>
+    `<ol class="timeline">${items.map((e) => `<li><span class="mono">${esc(e.year)}</span><span>${esc(e.text)}</span></li>`).join("")}</ol>`;
   const avatar = (m) =>
     m.photo
       ? `<img class="avatar" src="${esc(m.photo)}" alt="${esc(m.name)}" loading="lazy">`
       : `<div class="avatar avatar-text">${esc(m.name.slice(0, 1))}</div>`;
-  const pubItem = (p) =>
-    `<li><div class="pub-title">${p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>` : esc(p.title)}</div>
-      <div class="pub-meta">${esc(p.authors)} — <em>${esc(p.venue)}</em>, ${p.year}</div></li>`;
 
   // ---------- Pages ----------
   if (page === "index") {
     set("hero", `
-      <div class="container">
-        <p class="eyebrow">${esc(L.university)}</p>
-        <h1>${esc(L.name)}</h1>
-        <p class="hero-en">${esc(L.nameEn)}</p>
-        <p class="hero-tag">${esc(L.tagline)}</p>
-        <div class="hero-actions"><a class="btn" href="research.html">研究方向</a><a class="btn btn-ghost" href="contact.html">加入我們</a></div>
+      <div class="container hero-grid">
+        <div class="hero-text">
+          <p class="eyebrow mono">${esc(L.universityEn)}</p>
+          <h1>${esc(L.name)}</h1>
+          <p class="hero-en mono">${esc(L.nameEn)}</p>
+          <p class="hero-tag">${esc(L.tagline)}</p>
+          <div class="hero-actions"><a class="btn" href="research.html">研究主題 →</a><a class="btn btn-ghost" href="contact.html">加入我們</a></div>
+        </div>
+        <figure class="hero-fig">
+          ${foamSVG(560, 420, 150, 20240611, "hero-foam")}
+          <figcaption class="mono"><span class="scale"></span>Fig. 0 — 微孔泡材截面示意</figcaption>
+        </figure>
       </div>`);
     set("intro", esc(L.intro));
-    set("research-preview", researchCards(L.research));
-    set("news", newsList(L.news.slice(0, 5)));
-    set("pub-preview", `<ul class="pubs">${L.publications.slice(0, 3).map(pubItem).join("")}</ul>`);
+    set("research-preview", L.research
+      .map((r) => `<li><span class="mono">${esc(r.code)}</span>${esc(r.title)}</li>`).join(""));
+    set("honor-preview", timeline(L.honors.slice(0, 5)));
+    set("facts", `
+      <div><b class="mono">${L.research.length}</b><span>研究主題</span></div>
+      <div><b class="mono">E1-242-1</b><span>實驗室位置</span></div>
+      <div><b class="mono">${esc(L.pi.courses.length)}</b><span>開授課程</span></div>`);
   }
 
-  if (page === "research") set("research-list", researchCards(L.research));
+  if (page === "research") set("research-list", researchRows(L.research));
 
   if (page === "members") {
-    set("member-groups", Object.entries(L.members)
-      .map(([group, list]) => `
-        <section class="section-block"><h2>${esc(group)}</h2>
-          <div class="members ${list.length === 1 && list[0].bio ? "members-featured" : ""}">
-            ${list.map((m) => `
+    const p = L.pi;
+    set("pi", `
+      <article class="pi">
+        <div class="pi-side">
+          ${avatar(p)}
+          <h2>${esc(p.name)} <span class="muted">${esc(p.title)}</span></h2>
+          <p class="mono muted">${esc(p.nameEn)}</p>
+          <dl class="kv">
+            <dt>Email</dt><dd><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></dd>
+            <dt>電話</dt><dd>${esc(p.phone)}</dd>
+            <dt>辦公室</dt><dd>${esc(p.office)}</dd>
+          </dl>
+        </div>
+        <div class="pi-main">
+          <section><h3 class="label">學歷 Education</h3>${timeline(p.education)}</section>
+          <section><h3 class="label">經歷 Experience</h3>${timeline(p.experience)}</section>
+          <section class="pi-cols">
+            <div><h3 class="label">學術服務</h3><ul class="plain">${p.service.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>
+            <div><h3 class="label">授課</h3><ul class="tags">${p.courses.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>
+          </section>
+        </div>
+      </article>`);
+    const groups = Object.entries(L.members).filter(([, list]) => list.length);
+    set("member-groups", groups.length
+      ? groups.map(([group, list]) => `
+          <section class="section-block"><h2 class="label">${esc(group)}</h2>
+            <div class="members">${list.map((m) => `
               <article class="member">${avatar(m)}
-                <div><h3>${esc(m.name)}</h3><p class="muted">${esc(m.nameEn)}</p><p>${esc(m.role)}</p>
-                ${m.bio ? `<p class="bio">${esc(m.bio)}</p>` : ""}
-                ${m.email ? `<p><a href="mailto:${esc(m.email)}">${esc(m.email)}</a></p>` : ""}</div>
+                <div><h3>${esc(m.name)}</h3><p class="mono muted">${esc(m.nameEn)}</p><p>${esc(m.role)}</p>
+                ${m.topic ? `<p class="muted">${esc(m.topic)}</p>` : ""}</div>
               </article>`).join("")}
-          </div></section>`)
-      .join(""));
+            </div></section>`).join("")
+      : `<p class="empty">學生名單整理中。對研究主題有興趣的同學，歡迎 <a href="contact.html">與我們聯絡</a>。</p>`);
   }
 
   if (page === "publications") {
     const years = [...new Set(L.publications.map((p) => p.year))].sort((a, b) => b - a);
     set("pub-list", years
-      .map((y) => `<section class="section-block"><h2>${y}</h2><ul class="pubs">${L.publications.filter((p) => p.year === y).map(pubItem).join("")}</ul></section>`)
+      .map((y) => `<section class="year-block"><h3 class="mono">${y}</h3><ul class="pubs">${L.publications.filter((p) => p.year === y).map(pubItem).join("")}</ul></section>`)
       .join(""));
+    set("honor-list", timeline(L.honors));
   }
 
   if (page === "contact") {
     const c = L.contact;
     set("contact-info", `
-      <dl class="contact-list">
+      <dl class="kv kv-lg">
+        <dt>實驗室</dt><dd>${esc(c.lab)}</dd>
+        <dt>辦公室</dt><dd>${esc(c.office)}</dd>
         <dt>地址</dt><dd>${esc(c.address)}</dd>
         <dt>Email</dt><dd><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></dd>
         <dt>電話</dt><dd>${esc(c.phone)}</dd>
+        <dt>系辦</dt><dd>${esc(c.deptPhone)}</dd>
       </dl>
-      <p>對本實驗室研究有興趣的同學，歡迎來信附上簡歷與成績單。</p>`);
+      <div class="note">
+        <h3>招生</h3>
+        <p>歡迎化學、材料、化工、機械、物理背景的碩士生、博士生與大學部專題生，也歡迎國際學生。請來信附上簡歷、成績單與有興趣的研究主題。</p>
+      </div>`);
     set("map", c.mapEmbed ? `<iframe src="${esc(c.mapEmbed)}" loading="lazy" title="地圖" referrerpolicy="no-referrer-when-downgrade"></iframe>` : "");
   }
 })();
